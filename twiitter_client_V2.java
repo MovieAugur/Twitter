@@ -55,25 +55,32 @@ public class twitter_client extends Client_Builder {
 		return temp;
 	}
 
-	public List<String> getAllReviews(String movie_name) throws TwitterException
+	public List<String> getAllReviews(String movie_name) throws TwitterException, InterruptedException
 	{
 		QueryResult initial = getReview(movie_name,-1);
 		List<String> reviews = new LinkedList<String>();
 		int size = initial.getTweets().size();
-		Status last_status =  initial.getTweets().get(size-1);
-		long last_id = last_status.getId();
-		long max_id = last_id;
-		int count = 1;
-		reviews.addAll(extractTweets(initial));
-		while (size > 99 && count < 30)
+		Status last_status;
+		if (size > 0)
 		{
-			initial =  getReview(movie_name,max_id);
-			size = initial.getTweets().size();
-			last_status =  initial.getTweets().get(size-1);
-			last_id = last_status.getId();
-			max_id = last_id;
-			reviews.addAll(extractTweets(initial));
-			count ++;
+			 last_status =  initial.getTweets().get(size-1);
+			 long last_id = last_status.getId();
+				long max_id = last_id;
+				int count = 1;
+				reviews.addAll(extractTweets(initial));
+				while (size > 99 && count < 20)
+				{
+					Thread.sleep(1000);//sleep necessary so that requests/sec limit is not violated.
+					initial =  getReview(movie_name,max_id);
+					size = initial.getTweets().size();
+					last_status =  initial.getTweets().get(size-1);
+					last_id = last_status.getId();
+					max_id = last_id;
+					reviews.addAll(extractTweets(initial));
+					System.out.println("count: "+count+" comments retrieved: "+reviews.size());
+					count ++;
+				}
+				System.out.println("Total calls made for this movie:" + count);
 		}
 		
 		return reviews;
@@ -93,11 +100,6 @@ public class twitter_client extends Client_Builder {
 				inputFile.createNewFile();
 				fileWriter = new FileWriter(inputFile);
 				BufferedWriter bw = new BufferedWriter(fileWriter);
-				for (String review : reviews) {
-					String data = commentMeta + review;
-					bw.write(data);
-					bw.newLine();
-				}
 				for (String review : reviews) {
 					String data = commentMeta + review;
 					bw.write(data);
@@ -135,7 +137,6 @@ public class twitter_client extends Client_Builder {
     		Thread.sleep(100000);//sleep for 100 seconds, so that API limit is not violated.
     		filename =   t.generateOutputFile(movies.get(i));
     		s3client.uploadFile(filename);
-   
     	}
 	}
 
