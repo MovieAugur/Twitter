@@ -5,12 +5,12 @@
 //http://stackoverflow.com/questions/23341215/extracting-tweets-of-a-specific-hashtag-using-twitter4j
 
 package twitter_Augur;
-
-
 import twitter4j.*;
 
+import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.File;
+import java.io.FileReader;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.util.*;
@@ -25,7 +25,7 @@ public class twitter_client extends Client_Builder {
 	public static final String FILENAME = "Twitter.txt";
 	
 	public QueryResult getReview(String movie_name,long max_id) throws TwitterException {
-		Query query = new Query( movie_name + " movie" +" -filter:retweets -filter:links -filter:replies -filter:images");
+		Query query = new Query( movie_name + "-filter:retweets -filter:links -filter:replies -filter:images");
 		query.setCount(100);
 		query.setLang("en");
 		if (max_id != -1)
@@ -60,6 +60,7 @@ public class twitter_client extends Client_Builder {
 		QueryResult initial = getReview(movie_name,-1);
 		List<String> reviews = new LinkedList<String>();
 		int size = initial.getTweets().size();
+		System.out.println("initial size "+size);
 		Status last_status;
 		if (size > 0)
 		{
@@ -68,19 +69,22 @@ public class twitter_client extends Client_Builder {
 				long max_id = last_id;
 				int count = 1;
 				reviews.addAll(extractTweets(initial));
-				while (size > 99 && count < 20)
+				while (size > 99 && count < 5)
 				{
 					Thread.sleep(1000);//sleep necessary so that requests/sec limit is not violated.
 					initial =  getReview(movie_name,max_id);
 					size = initial.getTweets().size();
-					last_status =  initial.getTweets().get(size-1);
-					last_id = last_status.getId();
-					max_id = last_id;
-					reviews.addAll(extractTweets(initial));
-					System.out.println("count: "+count+" comments retrieved: "+reviews.size());
+					if (size > 0) {
+						last_status = initial.getTweets().get(size - 1);
+						last_id = last_status.getId();
+						max_id = last_id;
+						reviews.addAll(extractTweets(initial));
+						System.out.println("count: " + count
+								+ " comments retrieved: " + reviews.size());
+					}
 					count ++;
 				}
-				System.out.println("Total calls made for this movie:" + count);
+				System.out.println("Total calls made for " + movie_name +" " + count);
 		}
 		
 		return reviews;
@@ -93,28 +97,61 @@ public class twitter_client extends Client_Builder {
 			File inputFile = new File(Filename);
 			FileWriter fileWriter;
 			List <String> reviews = getAllReviews( movie_name);
-			String commentMeta = movie_name + "\t" + TEXT_DATA + 
-					 TWITTER  + AUDIENCE + " ";	
-			try {
+			if (reviews.isEmpty() != true) {
+				String commentMeta = movie_name + "\t" + TEXT_DATA + TWITTER
+						+ AUDIENCE + " ";
+				try {
 
-				inputFile.createNewFile();
-				fileWriter = new FileWriter(inputFile);
-				BufferedWriter bw = new BufferedWriter(fileWriter);
-				for (String review : reviews) {
-					String data = commentMeta + review;
-					bw.write(data);
-					bw.newLine();
+					inputFile.createNewFile();
+					fileWriter = new FileWriter(inputFile);
+					BufferedWriter bw = new BufferedWriter(fileWriter);
+					for (String review : reviews) {
+						String data = commentMeta + review;
+						bw.write(data);
+						bw.newLine();
+					}
+					bw.close();
+				} catch (IOException e) {
+					e.printStackTrace();
 				}
-				bw.close();
-			} catch (IOException e) {
-				e.printStackTrace();
+				return Filename;
 			}
-			
-			return Filename;
+			else
+				return "blank_file";
 		}
 	public static void main(String[] args) throws Exception
 	{
-		if (args.length < 3)
+		twitter_client t = new twitter_client();
+    	String path = args[0];
+    	String bucketname = args[1];
+    	String folder_name = args[2];
+    	String CurrentLine;
+    	String filename;
+    	S3Utility s3client = new S3Utility(bucketname,folder_name);
+    	String[] parts = {"1","2"};
+    	List <String> movielist = new LinkedList<String>();
+    	FileReader fr = new FileReader(path);
+    	BufferedReader br = new BufferedReader(fr);
+    	while ((CurrentLine = br.readLine()) != null) {
+    		parts = CurrentLine.split("\t");
+			movielist.add(parts[0]);
+		}
+    	System.out.println(movielist);
+    	for (int i = 0;i<movielist.size();i++)
+    	{
+    		Thread.sleep(26000);//sleep for 26 seconds, so that API limit is not violated.
+    		filename =   t.generateOutputFile(movielist.get(i));
+    		if (filename.equalsIgnoreCase("blank_file") != true)
+    			{
+    				System.out.println("initiating upload for "+movielist.get(i));
+    				s3client.uploadFile(filename);
+    			}
+    		else
+    		{
+    			System.out.println("no tweets found for "+movielist.get(i));
+    		}
+    	}
+		/*if (args.length < 3)
     		{
 			System.out.println("Usage:javac -c jar <bucket-name> <folder> <movie1> <movie2>...<movie-n>");
 			throw new UnsupportedOperationException();
@@ -134,10 +171,11 @@ public class twitter_client extends Client_Builder {
     	//System.out.println((movies.toString()));
     	for (int i = 0;i < movies.size();i++)
     	{
-    		Thread.sleep(100000);//sleep for 100 seconds, so that API limit is not violated.
+    		Thread.sleep(60000);//sleep for 60 seconds, so that API limit is not violated.
     		filename =   t.generateOutputFile(movies.get(i));
+    		if (filename.equalsIgnoreCase("blank_file") != true)
     		s3client.uploadFile(filename);
-    	}
+    	}*/
 	}
 
 }
